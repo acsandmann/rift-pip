@@ -1,0 +1,74 @@
+[package]
+name = "rift-pip"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rift-client = { git = "https://github.com/acsandmann/rift", version = "0.1.0" }
+block2 = { version = "0.6.2", default-features = false, features = ["alloc"] }
+dispatch2 = "0.3"
+objc2 = { version = "0.6.2", default-features = false, features = ["exception"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSApplication",
+    "NSColor",
+    "NSEvent",
+    "NSGraphics",
+    "NSTrackingArea",
+    "NSResponder",
+    "NSScreen",
+    "NSView",
+    "NSWindow",
+    "NSRunningApplication",
+    "objc2-core-graphics",
+    "objc2-core-foundation",
+    "objc2-quartz-core",
+] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CFCGTypes",
+] }
+objc2-core-media = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CMSampleBuffer",
+    "objc2-core-video",
+] }
+objc2-core-video = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CVBuffer",
+    "CVImageBuffer",
+    "CVPixelBuffer",
+    "CVPixelBufferIOSurface",
+    "objc2-io-surface",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSError",
+    "NSGeometry",
+    "NSObject",
+] }
+objc2-io-surface = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "IOSurfaceRef",
+    "objc2",
+    "objc2-core-foundation",
+] }
+objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CALayer",
+    "CATransaction",
+    "objc2-core-graphics",
+] }
+objc2-screen-capture-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "dispatch2",
+    "SCShareableContent",
+    "SCStream",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "objc2-core-media",
+] }
+libc = "1.0.0-alpha.4"
