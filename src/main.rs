@@ -24,7 +24,7 @@ use objc2_screen_capture_kit::{
     SCCaptureResolutionType, SCContentFilter, SCShareableContent, SCStream, SCStreamConfiguration,
     SCStreamOutput, SCStreamOutputType,
 };
-use rift_client::{ReactorCommand, RiftCommand, RiftMachClient, WindowId};
+use rift_client::{ReactorCommand, RiftCommand, RiftMachClient, WindowData, WindowId};
 
 type Result<T = ()> = std::result::Result<T, Box<dyn Error>>;
 
@@ -256,29 +256,73 @@ fn capture(wid: u32, layer: Retained<CALayer>, size: CGSize, scale: f64) {
     }
 }
 
-fn corner() -> Result<Option<Corner>> {
-    Ok(Some(match std::env::args().nth(1).as_deref() {
-        None | Some("--bottom_right" | "--bottom-right") => Corner::BottomRight,
-        Some("--top_left" | "--top-left") => Corner::TopLeft,
-        Some("--top_right" | "--top-right") => Corner::TopRight,
-        Some("--bottom_left" | "--bottom-left") => Corner::BottomLeft,
-        Some("-h" | "--help") => {
-            println!(
-                "rift-pip {}\n\nUSAGE:\n    Focus a Rift-managed window, then run: rift-pip [CORNER]\n\nCORNER (default: --bottom_right):\n    --top_left | --top-left\n    --top_right | --top-right\n    --bottom_left | --bottom-left\n    --bottom_right | --bottom-right\n\nCONTROLS:\n    Drag       Move and resize the PiP while preserving its aspect ratio\n    Click      Focus the source window\n    Red button Close the PiP",
-                env!("CARGO_PKG_VERSION")
-            );
-            return Ok(None);
+struct Options {
+    corner: Corner,
+    window: Option<u32>,
+}
+
+fn options() -> Result<Option<Options>> {
+    let mut corner = Corner::BottomRight;
+    let mut window = None;
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--bottom_right" | "--bottom-right" => corner = Corner::BottomRight,
+            "--top_left" | "--top-left" => corner = Corner::TopLeft,
+            "--top_right" | "--top-right" => corner = Corner::TopRight,
+            "--bottom_left" | "--bottom-left" => corner = Corner::BottomLeft,
+            "-w" | "--window" => {
+                let id = args
+                    .next()
+                    .ok_or("`--window` needs a WindowServer id; try `rift-pip --help`")?;
+                window = Some(
+                    id.parse()
+                        .map_err(|_| format!("`--window {id}` is not a WindowServer id"))?,
+                );
+            }
+            "-h" | "--help" => {
+                println!(
+                    "rift-pip {}\n\nUSAGE:\n    Focus a Rift-managed window, then run: rift-pip [CORNER]\n    Or mirror any managed window by id:   rift-pip --window <ID> [CORNER]\n\nOPTIONS:\n    -w, --window <ID>   WindowServer id of the window to mirror (see `rift-cli query windows`)\n                        instead of the focused window; it may be on an inactive workspace\n\nCORNER (default: --bottom_right):\n    --top_left | --top-left\n    --top_right | --top-right\n    --bottom_left | --bottom-left\n    --bottom_right | --bottom-right\n\nCONTROLS:\n    Drag       Move and resize the PiP while preserving its aspect ratio\n    Click      Focus the source window\n    Red button Close the PiP",
+                    env!("CARGO_PKG_VERSION")
+                );
+                return Ok(None);
+            }
+            "-V" | "--version" => {
+                println!("rift-pip {}", env!("CARGO_PKG_VERSION"));
+                return Ok(None);
+            }
+            _ => return Err(format!("unknown option `{arg}`; try `rift-pip --help`").into()),
         }
-        Some("-V" | "--version") => {
-            println!("rift-pip {}", env!("CARGO_PKG_VERSION"));
-            return Ok(None);
+    }
+    Ok(Some(Options { corner, window }))
+}
+
+fn source_window(client: &RiftMachClient, window: Option<u32>) -> Result<WindowData> {
+    let Some(id) = window else {
+        return Ok(client
+            .get_windows(None)
+            .map_err(|e| format!("could not query Rift windows ({e})"))?
+            .into_iter()
+            .find(|w| w.is_focused)
+            .ok_or("Rift has no focused managed window; focus one and run again")?);
+    };
+    let mut workspaces = client
+        .get_workspaces(None)
+        .map_err(|e| format!("could not query Rift workspaces ({e})"))?;
+    for display in client.get_displays().unwrap_or_default() {
+        if let Some(space) = display.space {
+            workspaces.extend(client.get_workspaces(Some(space)).unwrap_or_default());
         }
-        Some(arg) => return Err(format!("unknown option `{arg}`; try `rift-pip --help`").into()),
-    }))
+    }
+    workspaces
+        .into_iter()
+        .flat_map(|w| w.windows)
+        .find(|w| w.window_server_id == Some(id))
+        .ok_or_else(|| format!("Rift manages no window with WindowServer id {id}").into())
 }
 
 fn run() -> Result {
-    let Some(corner) = corner()? else {
+    let Some(Options { corner, window }) = options()? else {
         return Ok(());
     };
     let mtm = MainThreadMarker::new().ok_or("must run on the main thread")?;
@@ -286,12 +330,7 @@ fn run() -> Result {
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     let client = RiftMachClient::connect()
         .map_err(|e| format!("could not connect to Rift; start Rift first ({e})"))?;
-    let source = client
-        .get_windows(None)
-        .map_err(|e| format!("could not query Rift windows ({e})"))?
-        .into_iter()
-        .find(|w| w.is_focused)
-        .ok_or("Rift has no focused managed window; focus one and run again")?;
+    let source = source_window(&client, window)?;
     let wid = source
         .window_server_id
         .ok_or("the focused Rift window has no WindowServer ID")?;
